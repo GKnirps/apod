@@ -3,8 +3,33 @@ use chrono::naive::NaiveDate;
 use reqwest::blocking::Client;
 use reqwest::header;
 use serde::Deserialize;
-use std::fs::write;
+use std::env::var;
+use std::fs::{read, write};
+use std::io::ErrorKind;
 use std::path::PathBuf;
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Deserialize)]
+struct Config {
+    api_key: Option<String>,
+    image_dir: Option<PathBuf>,
+}
+
+fn load_config() -> Result<Config, String> {
+    let home_dir = match var("HOME") {
+        Ok(d) => d,
+        Err(_) => return Ok(Default::default()),
+    };
+
+    let path: PathBuf = [&home_dir, ".apod"].iter().collect();
+    let file_content = match read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => match e.kind() {
+            ErrorKind::NotFound => return Ok(Default::default()),
+            _ => return Err(format!("Unable to read config: {}", e)),
+        },
+    };
+    serde_json::from_slice(&file_content).map_err(|e| format!("Unable to parse config: {}", e))
+}
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Deserialize)]
 #[serde(tag = "media_type")]
@@ -63,15 +88,25 @@ fn write_image(mut dir: PathBuf, apod_data: &ApodData, image: &[u8]) -> Result<(
 fn main() -> Result<(), String> {
     let client = Client::new();
 
-    // TODO: add verbose option
+    let config = load_config()?;
 
-    // TODO: make key configurable
-    let apod_data = fetch_current_data(&client, "DEMO_KEY")?;
+    let api_key = match &config.api_key {
+        None => {
+            eprintln!("No api key found in config. Using DEMO_KEY");
+            "DEMO_KEY"
+        }
+        Some(api_key) => api_key,
+    };
+
+    let apod_data = fetch_current_data(&client, api_key)?;
 
     let hd_image = fetch_hd_image(&client, &apod_data)?;
 
-    // TODO: make directory configurable
-    write_image(PathBuf::from("."), &apod_data, &hd_image)
+    write_image(
+        config.image_dir.unwrap_or_else(|| PathBuf::from(".")),
+        &apod_data,
+        &hd_image,
+    )
 }
 
 #[cfg(test)]
