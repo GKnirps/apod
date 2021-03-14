@@ -89,7 +89,7 @@ fn write_image(
     apod_data: &ApodData,
     url: &Url,
     image: &[u8],
-) -> Result<(), String> {
+) -> Result<PathBuf, String> {
     let filename = url
         .path_segments()
         .and_then(|segments| segments.last())
@@ -97,7 +97,9 @@ fn write_image(
         .unwrap_or_else(|| format!("{}", apod_data.date));
     dir.push(filename);
 
-    write(&dir, image).map_err(|e| format!("Unable to write image data: {})", e))
+    write(&dir, image).map_err(|e| format!("Unable to write image data: {})", e))?;
+
+    Ok(dir)
 }
 
 fn main() -> Result<(), String> {
@@ -119,12 +121,16 @@ fn main() -> Result<(), String> {
 
     let hd_image = fetch_hd_image(&client, &image_url)?;
 
-    write_image(
+    let file_path = write_image(
         config.image_dir.unwrap_or_else(|| PathBuf::from(".")),
         &apod_data,
         &image_url,
         &hd_image,
-    )
+    )?;
+
+    println!("{}", file_path.to_string_lossy());
+
+    Ok(())
 }
 
 #[cfg(test)]
