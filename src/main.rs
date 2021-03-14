@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use chrono::naive::NaiveDate;
 use reqwest::blocking::Client;
-use reqwest::header;
+use reqwest::{header, Url};
 use serde::Deserialize;
 use std::env::var;
 use std::fs::{read, write};
@@ -65,23 +65,38 @@ fn fetch_current_data(client: &Client, api_key: &str) -> Result<ApodData, String
         .map_err(|e| format!("Error parsing metadata: {}", e))
 }
 
-fn fetch_hd_image(client: &Client, image_data: &ApodData) -> Result<Bytes, String> {
+fn get_image_url(image_data: &ApodData) -> Result<Url, String> {
     match &image_data.media {
-        MediaType::Image { hdurl: url } => client
-            .get(url)
-            .header(header::USER_AGENT, USER_AGENT)
-            .send()
-            .map_err(|e| format!("Error fetching image: {}", e))?
-            .bytes()
-            .map_err(|e| format!("Unable to read image: {}", e)),
+        MediaType::Image { hdurl: url } => {
+            Url::parse(&url).map_err(|e| format!("Unable to parse hd image URL: {}", e))
+        }
         MediaType::Video {} => Err("Unable to fetch image, media type is video".to_owned()),
     }
 }
 
-fn write_image(mut dir: PathBuf, apod_data: &ApodData, image: &[u8]) -> Result<(), String> {
-    // TODO: use better filename
-    // TODO  don't just assume file extension
-    dir.push(format!("{}.jpeg", apod_data.date));
+fn fetch_hd_image(client: &Client, url: &Url) -> Result<Bytes, String> {
+    client
+        .get(url.clone())
+        .header(header::USER_AGENT, USER_AGENT)
+        .send()
+        .map_err(|e| format!("Error fetching image: {}", e))?
+        .bytes()
+        .map_err(|e| format!("Unable to read image: {}", e))
+}
+
+fn write_image(
+    mut dir: PathBuf,
+    apod_data: &ApodData,
+    url: &Url,
+    image: &[u8],
+) -> Result<(), String> {
+    let filename = url
+        .path_segments()
+        .and_then(|segments| segments.last())
+        .map(|path_name| format!("{}_{}", apod_data.date, path_name))
+        .unwrap_or_else(|| format!("{}", apod_data.date));
+    dir.push(filename);
+
     write(&dir, image).map_err(|e| format!("Unable to write image data: {})", e))
 }
 
@@ -100,11 +115,14 @@ fn main() -> Result<(), String> {
 
     let apod_data = fetch_current_data(&client, api_key)?;
 
-    let hd_image = fetch_hd_image(&client, &apod_data)?;
+    let image_url = get_image_url(&apod_data)?;
+
+    let hd_image = fetch_hd_image(&client, &image_url)?;
 
     write_image(
         config.image_dir.unwrap_or_else(|| PathBuf::from(".")),
         &apod_data,
+        &image_url,
         &hd_image,
     )
 }
