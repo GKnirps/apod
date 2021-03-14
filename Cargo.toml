@@ -3,6 +3,7 @@ name = "apod"
 version = "0.1.0"
 authors = ["Guido Knips <guido.knips@posteo.de>"]
 edition = "2018"
+license = "GPL-3.0-or-later"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
