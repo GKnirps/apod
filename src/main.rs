@@ -2,11 +2,13 @@ use bytes::Bytes;
 use chrono::naive::NaiveDate;
 use reqwest::blocking::Client;
 use reqwest::{header, Url};
-use serde::Deserialize;
+use serde::{de, Deserialize, Deserializer};
 use std::env::var;
+use std::fmt::Display;
 use std::fs::{read, write};
 use std::io::ErrorKind;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Deserialize)]
 struct Config {
@@ -23,19 +25,34 @@ fn load_config() -> Result<Config, String> {
     let path: PathBuf = [&home_dir, ".apod"].iter().collect();
     let file_content = match read(&path) {
         Ok(bytes) => bytes,
-        Err(e) => match e.kind() {
-            ErrorKind::NotFound => return Ok(Default::default()),
-            _ => return Err(format!("Unable to read config: {}", e)),
-        },
+        Err(e) => {
+            return match e.kind() {
+                ErrorKind::NotFound => Ok(Default::default()),
+                _ => Err(format!("Unable to read config: {}", e)),
+            }
+        }
     };
     serde_json::from_slice(&file_content).map_err(|e| format!("Unable to parse config: {}", e))
+}
+
+fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+where
+    T: FromStr,
+    T::Err: Display,
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    T::from_str(&s).map_err(de::Error::custom)
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Deserialize)]
 #[serde(tag = "media_type")]
 enum MediaType {
     #[serde(rename = "image")]
-    Image { hdurl: String },
+    Image {
+        #[serde(deserialize_with = "from_str")]
+        hdurl: Url,
+    },
     #[serde(rename = "video")]
     Video {},
 }
@@ -46,7 +63,8 @@ struct ApodData {
     date: NaiveDate,
     explanation: String,
     title: String,
-    url: String,
+    #[serde(deserialize_with = "from_str")]
+    url: Url,
     #[serde(flatten)]
     media: MediaType,
 }
@@ -65,11 +83,9 @@ fn fetch_current_data(client: &Client, api_key: &str) -> Result<ApodData, String
         .map_err(|e| format!("Error parsing metadata: {}", e))
 }
 
-fn get_image_url(image_data: &ApodData) -> Result<Url, String> {
+fn get_image_url(image_data: &ApodData) -> Result<&Url, String> {
     match &image_data.media {
-        MediaType::Image { hdurl: url } => {
-            Url::parse(&url).map_err(|e| format!("Unable to parse hd image URL: {}", e))
-        }
+        MediaType::Image { hdurl: url } => Ok(url),
         MediaType::Video {} => Err("Unable to fetch image, media type is video".to_owned()),
     }
 }
@@ -165,11 +181,9 @@ mod tests {
                 date: NaiveDate::from_ymd(2021, 3, 8),
                 explanation: "What created the unusual red tail[…]".to_owned(),
                 title: "Three Tails of Comet NEOWISE".to_owned(),
-                url: "https://apod.nasa.gov/apod/image/2103/Neowise3Tails_Lefaudeux_960.jpg"
-                    .to_owned(),
+                url: Url.parse("https://apod.nasa.gov/apod/image/2103/Neowise3Tails_Lefaudeux_960.jpg").expect("Expected valid URL"),
                 media: MediaType::Image {
-                    hdurl: "https://apod.nasa.gov/apod/image/2103/Neowise3Tails_Lefaudeux_1088.jpg"
-                        .to_owned()
+                    hdurl: Url.parse("https://apod.nasa.gov/apod/image/2103/Neowise3Tails_Lefaudeux_1088.jpg").expect("Expected valid URL")
                 }
             }
         )
@@ -200,7 +214,9 @@ mod tests {
                 date: NaiveDate::from_ymd(2021, 3, 9),
                 explanation: "Is that a fossil?[…]".to_owned(),
                 title: "Perseverance 360: Unusual Rocks and the Search for Life on Mars".to_owned(),
-                url: "https://mars.nasa.gov/layout/embed/image/mars-panorama/?id=25674".to_owned(),
+                url: Url
+                    .parse("https://mars.nasa.gov/layout/embed/image/mars-panorama/?id=25674")
+                    .expect("Expected valid URL"),
                 media: MediaType::Video {},
             }
         )
