@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use chrono::naive::NaiveDate;
-use reqwest::blocking::Client;
+use reqwest::blocking::{Client, ClientBuilder};
 use reqwest::{header, Url};
 use serde::{de, Deserialize, Deserializer};
 use std::env::var;
@@ -9,6 +9,7 @@ use std::fs::{read, write};
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Duration;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Deserialize)]
 struct Config {
@@ -75,7 +76,6 @@ fn fetch_current_data(client: &Client, api_key: &str) -> Result<ApodData, String
     client
         .get("https://api.nasa.gov/planetary/apod")
         .header(header::ACCEPT, "application/json")
-        .header(header::USER_AGENT, USER_AGENT)
         .query(&[("api_key", api_key)])
         .send()
         .map_err(|e| format!("Error fetching metadata: {}", e))?
@@ -93,7 +93,6 @@ fn get_image_url(image_data: &ApodData) -> Result<&Url, String> {
 fn fetch_hd_image(client: &Client, url: &Url) -> Result<Bytes, String> {
     client
         .get(url.clone())
-        .header(header::USER_AGENT, USER_AGENT)
         .send()
         .map_err(|e| format!("Error fetching image: {}", e))?
         .bytes()
@@ -119,7 +118,14 @@ fn write_image(
 }
 
 fn main() -> Result<(), String> {
-    let client = Client::new();
+    let client = ClientBuilder::new()
+        .user_agent(USER_AGENT)
+        .tcp_keepalive(Duration::from_secs(60))
+        // we only need the timeout to download images not for the json request
+        // however, setting the timeout on the request does not seem to work
+        .timeout(Duration::from_secs(5 * 60))
+        .build()
+        .map_err(|e| format!("Unable to build client: {}", e))?;
 
     let config = load_config()?;
 
