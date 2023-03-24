@@ -184,12 +184,18 @@ mod tests {
             apod_data,
             ApodData {
                 copyright: Some("Nicolas Lefaudeux".to_owned()),
-                date: NaiveDate::from_ymd(2021, 3, 8),
+                date: NaiveDate::from_ymd_opt(2021, 3, 8).expect("expected valid date"),
                 explanation: "What created the unusual red tail[…]".to_owned(),
                 title: "Three Tails of Comet NEOWISE".to_owned(),
-                url: Url.parse("https://apod.nasa.gov/apod/image/2103/Neowise3Tails_Lefaudeux_960.jpg").expect("Expected valid URL"),
+                url: Url::parse(
+                    "https://apod.nasa.gov/apod/image/2103/Neowise3Tails_Lefaudeux_960.jpg"
+                )
+                .expect("Expected valid URL"),
                 media: MediaType::Image {
-                    hdurl: Url.parse("https://apod.nasa.gov/apod/image/2103/Neowise3Tails_Lefaudeux_1088.jpg").expect("Expected valid URL")
+                    hdurl: Url::parse(
+                        "https://apod.nasa.gov/apod/image/2103/Neowise3Tails_Lefaudeux_1088.jpg"
+                    )
+                    .expect("Expected valid URL")
                 }
             }
         )
@@ -217,11 +223,10 @@ mod tests {
             apod_data,
             ApodData {
                 copyright: None,
-                date: NaiveDate::from_ymd(2021, 3, 9),
+                date: NaiveDate::from_ymd_opt(2021, 3, 9).expect("expected valid date"),
                 explanation: "Is that a fossil?[…]".to_owned(),
                 title: "Perseverance 360: Unusual Rocks and the Search for Life on Mars".to_owned(),
-                url: Url
-                    .parse("https://mars.nasa.gov/layout/embed/image/mars-panorama/?id=25674")
+                url: Url::parse("https://mars.nasa.gov/layout/embed/image/mars-panorama/?id=25674")
                     .expect("Expected valid URL"),
                 media: MediaType::Video {},
             }
