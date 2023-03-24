@@ -24,16 +24,16 @@ fn load_config() -> Result<Config, String> {
     };
 
     let path: PathBuf = [&home_dir, ".apod"].iter().collect();
-    let file_content = match read(&path) {
+    let file_content = match read(path) {
         Ok(bytes) => bytes,
         Err(e) => {
             return match e.kind() {
                 ErrorKind::NotFound => Ok(Default::default()),
-                _ => Err(format!("Unable to read config: {}", e)),
+                _ => Err(format!("Unable to read config: {e}")),
             }
         }
     };
-    serde_json::from_slice(&file_content).map_err(|e| format!("Unable to parse config: {}", e))
+    serde_json::from_slice(&file_content).map_err(|e| format!("Unable to parse config: {e}"))
 }
 
 fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
@@ -78,9 +78,9 @@ fn fetch_current_data(client: &Client, api_key: &str) -> Result<ApodData, String
         .header(header::ACCEPT, "application/json")
         .query(&[("api_key", api_key)])
         .send()
-        .map_err(|e| format!("Error fetching metadata: {}", e))?
+        .map_err(|e| format!("Error fetching metadata: {e}"))?
         .json::<ApodData>()
-        .map_err(|e| format!("Error parsing metadata: {}", e))
+        .map_err(|e| format!("Error parsing metadata: {e}"))
 }
 
 fn get_image_url(image_data: &ApodData) -> Result<&Url, String> {
@@ -94,9 +94,9 @@ fn fetch_hd_image(client: &Client, url: &Url) -> Result<Bytes, String> {
     client
         .get(url.clone())
         .send()
-        .map_err(|e| format!("Error fetching image: {}", e))?
+        .map_err(|e| format!("Error fetching image: {e}"))?
         .bytes()
-        .map_err(|e| format!("Unable to read image: {}", e))
+        .map_err(|e| format!("Unable to read image: {e}"))
 }
 
 fn write_image(
@@ -112,7 +112,7 @@ fn write_image(
         .unwrap_or_else(|| format!("{}", apod_data.date));
     dir.push(filename);
 
-    write(&dir, image).map_err(|e| format!("Unable to write image data: {})", e))?;
+    write(&dir, image).map_err(|e| format!("Unable to write image data: {e})"))?;
 
     Ok(dir)
 }
@@ -125,7 +125,7 @@ fn main() -> Result<(), String> {
         // however, setting the timeout on the request does not seem to work
         .timeout(Duration::from_secs(5 * 60))
         .build()
-        .map_err(|e| format!("Unable to build client: {}", e))?;
+        .map_err(|e| format!("Unable to build client: {e}"))?;
 
     let config = load_config()?;
 
@@ -141,12 +141,12 @@ fn main() -> Result<(), String> {
 
     let image_url = get_image_url(&apod_data)?;
 
-    let hd_image = fetch_hd_image(&client, &image_url)?;
+    let hd_image = fetch_hd_image(&client, image_url)?;
 
     let file_path = write_image(
         config.image_dir.unwrap_or_else(|| PathBuf::from(".")),
         &apod_data,
-        &image_url,
+        image_url,
         &hd_image,
     )?;
 
