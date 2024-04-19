@@ -1,5 +1,6 @@
 use bytes::Bytes;
 use chrono::naive::NaiveDate;
+use percent_encoding::percent_decode_str;
 use reqwest::blocking::{Client, ClientBuilder};
 use reqwest::{header, Url};
 use serde::{de, Deserialize, Deserializer};
@@ -105,16 +106,19 @@ fn write_image(
     url: &Url,
     image: &[u8],
 ) -> Result<PathBuf, String> {
-    let filename = url
-        .path_segments()
-        .and_then(|segments| segments.last())
-        .map(|path_name| format!("{}_{}", apod_data.date, path_name))
-        .unwrap_or_else(|| format!("{}", apod_data.date));
-    dir.push(filename);
+    dir.push(image_filename(apod_data, url));
 
     write(&dir, image).map_err(|e| format!("Unable to write image data: {e})"))?;
 
     Ok(dir)
+}
+
+fn image_filename(apod_data: &ApodData, url: &Url) -> String {
+    url.path_segments()
+        .and_then(|segments| segments.last())
+        .and_then(|path_name| percent_decode_str(&path_name).decode_utf8().ok())
+        .map(|path_name| format!("{}_{}", apod_data.date, path_name))
+        .unwrap_or_else(|| format!("{}", apod_data.date))
 }
 
 fn main() -> Result<(), String> {
@@ -231,5 +235,26 @@ mod tests {
                 media: MediaType::Video {},
             }
         )
+    }
+
+    #[test]
+    fn image_filename_handles_spaces_correctly() {
+        // given
+        let url = Url::parse("https://apod.nasa.gov/apod/image/2404/NGC3372_ETA CARINA_LOPES.jpg")
+            .expect("expected valid URL");
+        let apod_data = ApodData {
+            copyright: Some("Demison Lopes".to_owned()),
+            date: NaiveDate::from_ymd_opt(2024, 4, 19).expect("expected valid date"),
+            explanation: "A jewel of the southern sky, […]".to_owned(),
+            title: "The Great Carina Nebula".to_owned(),
+            url: url.clone(),
+            media: MediaType::Image { hdurl: url.clone() },
+        };
+
+        // when
+        let path = image_filename(&apod_data, &url);
+
+        // then
+        assert_eq!(&path, "2024-04-19_NGC3372_ETA CARINA_LOPES.jpg");
     }
 }
