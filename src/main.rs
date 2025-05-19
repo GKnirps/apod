@@ -54,9 +54,16 @@ enum MediaType {
     Image {
         #[serde(deserialize_with = "from_str")]
         hdurl: Url,
+        #[serde(deserialize_with = "from_str")]
+        url: Url,
     },
     #[serde(rename = "video")]
-    Video {},
+    Video {
+        #[serde(deserialize_with = "from_str")]
+        url: Url,
+    },
+    #[serde(rename = "other")]
+    Other {},
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Deserialize)]
@@ -65,8 +72,6 @@ struct ApodData {
     date: NaiveDate,
     explanation: String,
     title: String,
-    #[serde(deserialize_with = "from_str")]
-    url: Url,
     #[serde(flatten)]
     media: MediaType,
 }
@@ -86,8 +91,9 @@ fn fetch_current_data(client: &Client, api_key: &str) -> Result<ApodData, String
 
 fn get_image_url(image_data: &ApodData) -> Result<&Url, String> {
     match &image_data.media {
-        MediaType::Image { hdurl: url } => Ok(url),
-        MediaType::Video {} => Err("Unable to fetch image, media type is video".to_owned()),
+        MediaType::Image { hdurl: url, url: _ } => Ok(url),
+        MediaType::Video { url: _ } => Err("Unable to fetch image, media type is video".to_owned()),
+        MediaType::Other {} => Err("Unable to fetch image, media type is 'other'".to_owned()),
     }
 }
 
@@ -191,13 +197,13 @@ mod tests {
                 date: NaiveDate::from_ymd_opt(2021, 3, 8).expect("expected valid date"),
                 explanation: "What created the unusual red tail[…]".to_owned(),
                 title: "Three Tails of Comet NEOWISE".to_owned(),
-                url: Url::parse(
-                    "https://apod.nasa.gov/apod/image/2103/Neowise3Tails_Lefaudeux_960.jpg"
-                )
-                .expect("Expected valid URL"),
                 media: MediaType::Image {
                     hdurl: Url::parse(
                         "https://apod.nasa.gov/apod/image/2103/Neowise3Tails_Lefaudeux_1088.jpg"
+                    )
+                    .expect("Expected valid URL"),
+                    url: Url::parse(
+                        "https://apod.nasa.gov/apod/image/2103/Neowise3Tails_Lefaudeux_960.jpg"
                     )
                     .expect("Expected valid URL")
                 }
@@ -230,9 +236,40 @@ mod tests {
                 date: NaiveDate::from_ymd_opt(2021, 3, 9).expect("expected valid date"),
                 explanation: "Is that a fossil?[…]".to_owned(),
                 title: "Perseverance 360: Unusual Rocks and the Search for Life on Mars".to_owned(),
-                url: Url::parse("https://mars.nasa.gov/layout/embed/image/mars-panorama/?id=25674")
+                media: MediaType::Video {
+                    url: Url::parse(
+                        "https://mars.nasa.gov/layout/embed/image/mars-panorama/?id=25674"
+                    )
                     .expect("Expected valid URL"),
-                media: MediaType::Video {},
+                },
+            }
+        )
+    }
+    #[test]
+    fn test_media_type_other_deserialization() {
+        // given
+        let json = json! (  {
+            "date": "2025-05-19",
+            "explanation": "What if you could fly over Pluto's moon Charon […]",
+            "media_type": "other",
+            "service_version": "v1",
+            "title": "Charon Flyover from New Horizons",
+        })
+        .to_string();
+
+        // when
+        let parsed = from_str::<ApodData>(&json);
+
+        // then
+        let apod_data = parsed.expect("Expected successful parsing");
+        assert_eq!(
+            apod_data,
+            ApodData {
+                copyright: None,
+                date: NaiveDate::from_ymd_opt(2025, 05, 19).expect("expected valid date"),
+                explanation: "What if you could fly over Pluto's moon Charon […]".to_owned(),
+                title: "Charon Flyover from New Horizons".to_owned(),
+                media: MediaType::Other {},
             }
         )
     }
@@ -247,8 +284,10 @@ mod tests {
             date: NaiveDate::from_ymd_opt(2024, 4, 19).expect("expected valid date"),
             explanation: "A jewel of the southern sky, […]".to_owned(),
             title: "The Great Carina Nebula".to_owned(),
-            url: url.clone(),
-            media: MediaType::Image { hdurl: url.clone() },
+            media: MediaType::Image {
+                hdurl: url.clone(),
+                url: url.clone(),
+            },
         };
 
         // when
