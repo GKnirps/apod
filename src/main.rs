@@ -2,8 +2,8 @@ use bytes::Bytes;
 use chrono::naive::NaiveDate;
 use percent_encoding::percent_decode_str;
 use reqwest::blocking::{Client, ClientBuilder};
-use reqwest::{header, Url};
-use serde::{de, Deserialize, Deserializer};
+use reqwest::{Url, header};
+use serde::{Deserialize, Deserializer, de};
 use std::env::var;
 use std::fmt::Display;
 use std::fs::{read, write};
@@ -31,7 +31,7 @@ fn load_config() -> Result<Config, String> {
             return match e.kind() {
                 ErrorKind::NotFound => Ok(Default::default()),
                 _ => Err(format!("Unable to read config: {e}")),
-            }
+            };
         }
     };
     serde_json::from_slice(&file_content).map_err(|e| format!("Unable to parse config: {e}"))
@@ -115,8 +115,8 @@ fn write_image(
 
 fn image_filename(apod_data: &ApodData, url: &Url) -> String {
     url.path_segments()
-        .and_then(|segments| segments.last())
-        .and_then(|path_name| percent_decode_str(&path_name).decode_utf8().ok())
+        .and_then(|mut segments| segments.next_back())
+        .and_then(|path_name| percent_decode_str(path_name).decode_utf8().ok())
         .map(|path_name| format!("{}_{}", apod_data.date, path_name))
         .unwrap_or_else(|| format!("{}", apod_data.date))
 }
