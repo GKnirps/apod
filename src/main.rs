@@ -14,7 +14,6 @@ use std::time::Duration;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Deserialize)]
 struct Config {
-    api_key: Option<String>,
     image_dir: Option<PathBuf>,
 }
 
@@ -78,15 +77,19 @@ struct ApodData {
 
 const USER_AGENT: &str = "I CAN HAZ STARS?";
 
-fn fetch_current_data(client: &Client, api_key: &str) -> Result<ApodData, String> {
+fn fetch_current_data(client: &Client) -> Result<ApodData, String> {
     client
-        .get("https://api.nasa.gov/planetary/apod")
+        .get("https://science.nasa.gov/wp-json/wp/v2/apod-basic")
         .header(header::ACCEPT, "application/json")
-        .query(&[("api_key", api_key)])
         .send()
         .map_err(|e| format!("Error fetching metadata: {e}"))?
-        .json::<ApodData>()
-        .map_err(|e| format!("Error parsing metadata: {e}"))
+        .error_for_status()
+        .map_err(|e| format!("HTTP error fetching metadata: {e}"))?
+        .json::<Vec<ApodData>>()
+        .map_err(|e| format!("Error parsing metadata: {e}"))?
+        .drain(..)
+        .next()
+        .ok_or_else(|| "metadata response contained empty list".to_string())
 }
 
 fn get_image_url(image_data: &ApodData) -> Result<&Url, String> {
@@ -139,15 +142,7 @@ fn main() -> Result<(), String> {
 
     let config = load_config()?;
 
-    let api_key = match &config.api_key {
-        None => {
-            eprintln!("No api key found in config. Using DEMO_KEY");
-            "DEMO_KEY"
-        }
-        Some(api_key) => api_key,
-    };
-
-    let apod_data = fetch_current_data(&client, api_key)?;
+    let apod_data = fetch_current_data(&client)?;
 
     let image_url = get_image_url(&apod_data)?;
 
